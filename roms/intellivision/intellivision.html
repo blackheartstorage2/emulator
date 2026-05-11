@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intellivision Emulator - Full ROM Support (EXEC + GROM + Game)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #0a0a15;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+        }
+        .emulator-container {
+            background: #0f0f1a;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid #2a2a3e;
+            max-width: 950px;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #000;
+            box-shadow: 0 0 0 2px #ffd700, 0 0 0 5px #0f0f1a;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button, .file-label {
+            background: #2a2a3e;
+            color: #ffd700;
+            border: none;
+            padding: 8px 16px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.2s;
+            font-size: 12px;
+        }
+        button:hover, .file-label:hover {
+            background: #3a3a5e;
+            transform: translateY(-1px);
+        }
+        .file-label {
+            display: inline-block;
+            background: #2a5f3e;
+        }
+        .file-label.exec {
+            background: #3a2a5e;
+        }
+        .file-label.grom {
+            background: #2a3a5e;
+        }
+        #rom-status {
+            margin-top: 15px;
+            color: #aaa;
+            text-align: center;
+            font-size: 10px;
+            padding: 8px;
+            background: #00000066;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .debug-panel {
+            margin-top: 15px;
+            background: #000000aa;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 10px;
+            color: #0f0;
+            border: 1px solid #2a2a3e;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .debug-panel h4 {
+            margin: 0 0 8px 0;
+            color: #ffd700;
+            font-size: 11px;
+        }
+        .debug-line {
+            font-family: monospace;
+            font-size: 9px;
+            border-bottom: 1px solid #2a2a3e;
+            padding: 2px 0;
+        }
+        .info-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 9px;
+            color: #666;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .warning {
+            color: #ffaa00;
+            background: #332200;
+            padding: 5px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            text-align: center;
+        }
+        .status-good {
+            color: #00ff00;
+        }
+        .status-bad {
+            color: #ff8888;
+        }
+    </style>
+</head>
+<body>
+<div class="emulator-container">
+    <canvas id="screen" width="636" height="384" style="width: 636px; height: 384px;"></canvas>
+    
+    <div class="controls">
+        <label class="file-label exec">
+            📜 1. Load EXEC.bin
+            <input type="file" id="exec-upload" accept=".bin,.rom" style="display:none">
+        </label>
+        <label class="file-label grom">
+            🔤 2. Load GROM.bin
+            <input type="file" id="grom-upload" accept=".bin,.rom" style="display:none">
+        </label>
+        <label class="file-label">
+            🎮 3. Load Game ROM
+            <input type="file" id="rom-upload" accept=".int,.bin,.rom" style="display:none">
+        </label>
+        <button id="reset-btn">🔄 Reset</button>
+        <button id="pause-btn">⏸️ Pause</button>
+    </div>
+    
+    <div id="rom-status">
+        🎮 Intellivision Emulator | Load EXEC.bin → GROM.bin → Game ROM
+    </div>
+    
+    <div class="debug-panel" id="debug-panel">
+        <h4>🔍 Live Debug Log</h4>
+        <div id="debug-log">Waiting for ROMs...</div>
+    </div>
+    
+    <div class="info-bar">
+        <span>EXEC: <span id="exec-status" class="status-bad">MISSING</span></span>
+        <span>GROM: <span id="grom-status" class="status-bad">MISSING</span></span>
+        <span>Game: <span id="game-status" class="status-bad">MISSING</span></span>
+        <span>CPU: <span id="cpu-status">READY</span></span>
+        <span>Video: <span id="video-status">---</span></span>
+    </div>
+    <div class="warning" id="file-warning" style="display:none;">
+        ⚠️ Running from file:// URL - Use local web server: python3 -m http.server 8000
+    </div>
+</div>
+
+<script>
+    (function(){
+        if(window.location.protocol === 'file:') {
+            document.getElementById('file-warning').style.display = 'block';
+        }
+        
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+        
+        const NATIVE_W = 159;
+        const NATIVE_H = 96;
+        const SCALE = 4;
+        const DISPLAY_W = NATIVE_W * SCALE;
+        const DISPLAY_H = NATIVE_H * SCALE;
+        canvas.width = DISPLAY_W;
+        canvas.height = DISPLAY_H;
+        
+        const debugLogDiv = document.getElementById('debug-log');
+        let debugLines = [];
+        
+        function addDebug(msg) {
+            debugLines.unshift(msg);
+            if(debugLines.length > 25) debugLines.pop();
+            debugLogDiv.innerHTML = debugLines.map(l => `<div class="debug-line">${l}</div>`).join('');
+        }
+        
+        let loadedRomData = null;
+        let loadedExecData = null;
+        let loadedGromData = null;
+        let romName = "";
+        let execName = "";
+        let gromName = "";
+        let emulationRunning = true;
+        let pauseRequested = false;
+        let cpu = null;
+        let stic = null;
+        let frameCount = 0;
+        
+        class STIC {
+            constructor() {
+                this.memory = null;
+                this.BACKTAB_START = 0x0200;
+                this.GRAM_START = 0x3000;
+                this.framebuffer = new Uint32Array(NATIVE_W * NATIVE_H);
+                this.colors = [
+                    0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00,
+                    0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
+                    0xC06040, 0x40C040, 0x4040C0, 0xC0C040,
+                    0xC040C0, 0x40C0C0, 0xC0C0C0, 0x808080
+                ];
+                this.grom = null;
+            }
+            
+            setMemory(memory) { 
+                this.memory = memory; 
+                // If GROM was loaded separately, use it
+                if(loadedGromData && loadedGromData.length) {
+                    this.loadGROMFromMemory();
+                } else {
+                    this.initDefaultGROM();
+                }
+            }
+            
+            loadGROMFromMemory() {
+                this.grom = new Array(256);
+                for(let i = 0; i < 256; i++) {
+                    this.grom[i] = new Uint8Array(8);
+                    const baseAddr = i * 8;
+                    for(let j = 0; j < 8 && baseAddr + j < loadedGromData.length; j++) {
+                        this.grom[i][j] = loadedGromData[baseAddr + j];
+                    }
+                }
+                addDebug(`🔤 Real GROM loaded (${loadedGromData.length} bytes)`);
+            }
+            
+            initDefaultGROM() {
+                this.grom = new Array(256);
+                for(let i = 0; i < 256; i++) {
+                    this.grom[i] = new Uint8Array(8);
+                }
+                this.grom[65] = new Uint8Array([0x3C, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00]);
+                this.grom[66] = new Uint8Array([0x7C, 0x66, 0x66, 0x7C, 0x66, 0x66, 0x7C, 0x00]);
+                this.grom[67] = new Uint8Array([0x3C, 0x66, 0x60, 0x60, 0x60, 0x66, 0x3C, 0x00]);
+                this.grom[48] = new Uint8Array([0x3C, 0x66, 0x6E, 0x76, 0x66, 0x66, 0x3C, 0x00]);
+                this.grom[49] = new Uint8Array([0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00]);
+                this.grom[32] = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                for(let i = 0; i < 256; i++) {
+                    if(this.grom[i][0] === 0 && i !== 32) {
+                        for(let j = 0; j < 8; j++) {
+                            this.grom[i][j] = (j % 2 === 0) ? 0x55 : 0xAA;
+                        }
+                    }
+                }
+                addDebug(`🔤 Using default GROM (simplified)`);
+            }
+            
+            readCard(address) {
+                if(!this.memory) return { glyph: 0, fg: 7, bg: 0, gram: false };
+                const cardData = this.memory[address] | (this.memory[address + 1] << 8);
+                return {
+                    glyph: cardData & 0xFF,
+                    fg: (cardData >> 8) & 0x07,
+                    bg: (cardData >> 11) & 0x07,
+                    gram: ((cardData >> 13) & 0x01) === 1
+                };
+            }
+            
+            getCardPattern(glyph, gramMode) {
+                if(gramMode) {
+                    const gramAddr = this.GRAM_START + (glyph * 8);
+                    const pattern = new Uint8Array(8);
+                    for(let i = 0; i < 8 && gramAddr + i < 0x3200; i++) {
+                        pattern[i] = this.memory[gramAddr + i] || 0;
+                    }
+                    return pattern;
+                }
+                return this.grom[glyph] || this.grom[32];
+            }
+            
+            render() {
+                if(!this.memory) {
+                    this.renderTestPattern();
+                    return;
+                }
+                
+                for(let i = 0; i < NATIVE_W * NATIVE_H; i++) this.framebuffer[i] = 0;
+                
+                for(let row = 0; row < 12; row++) {
+                    for(let col = 0; col < 20; col++) {
+                        const backtabAddr = 0x0200 + (row * 20 + col) * 2;
+                        const card = this.readCard(backtabAddr);
+                        const pattern = this.getCardPattern(card.glyph, card.gram);
+                        const fgColor = this.colors[card.fg];
+                        const bgColor = this.colors[card.bg];
+                        const tileX = col * 8;
+                        const tileY = row * 8;
+                        
+                        for(let py = 0; py < 8; py++) {
+                            const rowBits = pattern[py];
+                            for(let px = 0; px < 8; px++) {
+                                const bit = (rowBits >> (7 - px)) & 1;
+                                const color = bit ? fgColor : bgColor;
+                                const fbIndex = (tileY + py) * NATIVE_W + (tileX + px);
+                                if(fbIndex < this.framebuffer.length) this.framebuffer[fbIndex] = color;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            renderTestPattern() {
+                for(let y = 0; y < NATIVE_H; y++) {
+                    for(let x = 0; x < NATIVE_W; x++) {
+                        const pattern = ((Math.floor(x / 8) + Math.floor(y / 8)) % 16);
+                        const testColors = [0x000000, 0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF];
+                        this.framebuffer[y * NATIVE_W + x] = testColors[pattern % testColors.length];
+                    }
+                }
+            }
+            
+            drawToCanvas(ctx) {
+                try {
+                    const imageData = ctx.createImageData(DISPLAY_W, DISPLAY_H);
+                    const data = imageData.data;
+                    for(let y = 0; y < NATIVE_H; y++) {
+                        for(let x = 0; x < NATIVE_W; x++) {
+                            const colorValue = this.framebuffer[y * NATIVE_W + x];
+                            const r = (colorValue >> 16) & 0xFF;
+                            const g = (colorValue >> 8) & 0xFF;
+                            const b = colorValue & 0xFF;
+                            for(let sy = 0; sy < SCALE; sy++) {
+                                for(let sx = 0; sx < SCALE; sx++) {
+                                    const sx2 = x * SCALE + sx;
+                                    const sy2 = y * SCALE + sy;
+                                    const idx = (sy2 * DISPLAY_W + sx2) * 4;
+                                    data[idx] = r;
+                                    data[idx+1] = g;
+                                    data[idx+2] = b;
+                                    data[idx+3] = 255;
+                                }
+                            }
+                        }
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+                } catch(err) {
+                    ctx.fillStyle = "#ff0000";
+                    ctx.fillRect(0, 0, DISPLAY_W, DISPLAY_H);
+                }
+            }
+        }
+        
+        class CP1610 {
+            constructor(stic) {
+                this.stic = stic;
+                this.registers = new Uint16Array(8);
+                this.flags = { sign: false, zero: false, overflow: false, carry: false, interrupt: true };
+                this.memory = new Uint8Array(65536);
+                this.running = false;
+                this.cycles = 0;
+                this.instructionCount = 0;
+                this.pc = 0x5000;
+                this.lastOpcode = 0;
+                this.interruptEnabled = true;
+            }
+            
+            write16(address, value) {
+                if(address >= 65535) return;
+                this.memory[address] = value & 0xFF;
+                this.memory[address + 1] = (value >> 8) & 0xFF;
+            }
+            
+            read16(address) {
+                if(address >= 65535) return 0;
+                return this.memory[address] | (this.memory[address + 1] << 8);
+            }
+            
+            loadROM(romData, offset) {
+                this.memory = new Uint8Array(65536);
+                
+                // Load GROM at $0000 if available
+                if(loadedGromData && loadedGromData.length) {
+                    addDebug(`🔤 GROM: ${loadedGromData.length} bytes at $0000`);
+                    for(let i = 0; i < loadedGromData.length && i < 0x1000; i++) {
+                        this.memory[i] = loadedGromData[i];
+                    }
+                }
+                
+                // Load EXEC ROM at $1000 if available
+                if(loadedExecData && loadedExecData.length) {
+                    addDebug(`📜 EXEC: ${loadedExecData.length} bytes at $1000`);
+                    for(let i = 0; i < loadedExecData.length && i < 0x1000; i++) {
+                        this.memory[0x1000 + i] = loadedExecData[i];
+                    }
+                }
+                
+                // Load game ROM
+                addDebug(`🎮 Game: ${romData.length} bytes at $${offset.toString(16)}`);
+                for(let i = 0; i < romData.length && i < 65536 - offset; i++) {
+                    this.memory[offset + i] = romData[i];
+                }
+                
+                this.stic.setMemory(this.memory);
+                this.pc = offset;
+                return true;
+            }
+            
+            fetchDECLE() { return this.read16(this.pc); }
+            
+            updateFlagsSimple(value) {
+                const v16 = value & 0xFFFF;
+                this.flags.sign = (v16 & 0x8000) !== 0;
+                this.flags.zero = v16 === 0;
+            }
+            
+            add(dest, src) {
+                const a = this.registers[dest];
+                const b = src;
+                const result = (a + b) & 0xFFFF;
+                this.flags.carry = (a + b) > 0xFFFF;
+                this.flags.overflow = ((a ^ result) & (b ^ result) & 0x8000) !== 0;
+                this.flags.sign = (result & 0x8000) !== 0;
+                this.flags.zero = result === 0;
+                this.registers[dest] = result;
+            }
+            
+            sub(dest, src) {
+                const a = this.registers[dest];
+                const b = src;
+                const result = (a - b) & 0xFFFF;
+                this.flags.carry = (a - b) < 0;
+                this.flags.overflow = ((a ^ b) & (a ^ result) & 0x8000) !== 0;
+                this.flags.sign = (result & 0x8000) !== 0;
+                this.flags.zero = result === 0;
+                this.registers[dest] = result;
+            }
+            
+            compare(a, b) {
+                const result = (a - b) & 0xFFFF;
+                this.flags.sign = (result & 0x8000) !== 0;
+                this.flags.zero = result === 0;
+                this.flags.carry = (a - b) < 0;
+            }
+            
+            checkCondition(cond) {
+                switch(cond & 0x0F) {
+                    case 0x0: return true;
+                    case 0x1: return !this.flags.carry;
+                    case 0x2: return this.flags.carry;
+                    case 0x3: return !this.flags.zero;
+                    case 0x4: return this.flags.zero;
+                    case 0x5: return !this.flags.sign;
+                    case 0x6: return this.flags.sign;
+                    default: return false;
+                }
+            }
+            
+            reset() {
+                this.registers.fill(0);
+                this.flags = { sign: false, zero: false, overflow: false, carry: false, interrupt: true };
+                this.registers[6] = 0x2F0;
+                this.pc = 0x5000;
+                this.running = true;
+                this.cycles = 0;
+                this.instructionCount = 0;
+                this.interruptEnabled = true;
+                addDebug(`🔄 CPU Reset - PC=0x5000`);
+            }
+            
+            handleInterrupt() {
+                if(!this.running) return false;
+                if(!this.interruptEnabled) return false;
+                
+                if(frameCount % 60 === 0) {
+                    addDebug(`⚡ INTERRUPT - PC=0x${this.pc.toString(16)} -> 0x1004`);
+                }
+                
+                this.interruptEnabled = false;
+                
+                this.registers[6] -= 2;
+                this.write16(this.registers[6], this.pc);
+                
+                this.pc = 0x1004;
+                
+                return true;
+            }
+            
+            step() {
+                if(!this.running) return false;
+                
+                const decle = this.fetchDECLE();
+                const opcode = (decle >> 10) & 0x3F;
+                this.lastOpcode = opcode;
+                
+                const r0 = (decle >> 0) & 0x07;
+                const r1 = (decle >> 3) & 0x07;
+                const imm8 = decle & 0xFF;
+                const disp = decle & 0x3FF;
+                
+                if(this.instructionCount < 15) {
+                    let opName = "";
+                    switch(opcode) {
+                        case 0x00: opName = "HLT"; break;
+                        case 0x01: opName = "MOVR"; break;
+                        case 0x02: opName = "ADDR"; break;
+                        case 0x20: opName = "MVII"; break;
+                        case 0x30: opName = "MVO"; break;
+                        case 0x34: opName = "B"; break;
+                        case 0x70: opName = "SDBD"; break;
+                        default: opName = `OP${opcode.toString(16)}`;
+                    }
+                    addDebug(`[${this.instructionCount}] PC=$${this.pc.toString(16)} ${opName}`);
+                }
+                
+                switch(opcode) {
+                    case 0x00: this.running = false; break;
+                    case 0x01: this.registers[r0] = this.registers[r1]; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x02: this.add(r0, this.registers[r1]); break;
+                    case 0x03: this.sub(r0, this.registers[r1]); break;
+                    case 0x04: this.compare(this.registers[r0], this.registers[r1]); break;
+                    case 0x05: this.registers[r0] &= this.registers[r1]; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x06: this.registers[r0] ^= this.registers[r1]; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x07: this.registers[r0] |= this.registers[r1]; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x08: this.registers[r0] = ~this.registers[r0] & 0xFFFF; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x0C: { const shift = r1 & 0x07; this.flags.carry = (this.registers[r0] >> (16 - shift)) & 1; this.registers[r0] = (this.registers[r0] << shift) & 0xFFFF; this.updateFlagsSimple(this.registers[r0]); } break;
+                    case 0x0D: { const shift = r1 & 0x07; this.flags.carry = (this.registers[r0] >> (shift - 1)) & 1; this.registers[r0] = (this.registers[r0] >> shift) & 0xFFFF; this.updateFlagsSimple(this.registers[r0]); } break;
+                    case 0x20: this.registers[r0] = imm8; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x21: this.add(r0, imm8); break;
+                    case 0x22: this.sub(r0, imm8); break;
+                    case 0x23: this.compare(this.registers[r0], imm8); break;
+                    case 0x24: this.registers[r0] = this.read16(imm8); this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x30: this.write16(disp, this.registers[r0]); break;
+                    case 0x31: this.registers[r0] = this.read16(disp); this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x32: this.registers[6] -= 2; this.write16(this.registers[6], this.registers[r0]); break;
+                    case 0x33: this.registers[r0] = this.read16(this.registers[6]); this.registers[6] += 2; this.updateFlagsSimple(this.registers[r0]); break;
+                    case 0x34: this.pc = disp; return;
+                    case 0x35: if(this.checkCondition(disp >> 8)) { this.pc = disp; return; } break;
+                    case 0x70: this.interruptEnabled = true; break;
+                    case 0x71: this.interruptEnabled = false; break;
+                    default: break;
+                }
+                
+                this.pc += 2;
+                this.cycles++;
+                this.instructionCount++;
+                return true;
+            }
+            
+            run(maxCycles) {
+                let cyclesRun = 0;
+                while(this.running && cyclesRun < maxCycles && !pauseRequested) {
+                    this.step();
+                    cyclesRun++;
+                }
+                return cyclesRun;
+            }
+            
+            getDebugInfo() {
+                return {
+                    pc: `0x${this.pc.toString(16)}`,
+                    instructions: this.instructionCount,
+                };
+            }
+        }
+        
+        function checkAllROMsLoaded() {
+            const hasExec = !!(loadedExecData && loadedExecData.length);
+            const hasGrom = !!(loadedGromData && loadedGromData.length);
+            const hasGame = !!(loadedRomData && loadedRomData.raw);
+            
+            document.getElementById('exec-status').innerHTML = hasExec ? `✅ ${execName}` : 'MISSING';
+            document.getElementById('exec-status').className = hasExec ? 'status-good' : 'status-bad';
+            document.getElementById('grom-status').innerHTML = hasGrom ? `✅ ${gromName}` : 'MISSING';
+            document.getElementById('grom-status').className = hasGrom ? 'status-good' : 'status-bad';
+            document.getElementById('game-status').innerHTML = hasGame ? `✅ ${romName}` : 'MISSING';
+            document.getElementById('game-status').className = hasGame ? 'status-good' : 'status-bad';
+            
+            if(hasExec && hasGrom && hasGame) {
+                initializeEmulation();
+            }
+        }
+        
+        function initializeEmulation() {
+            if(!loadedRomData || !loadedRomData.raw) {
+                addDebug("⏳ Waiting for game ROM...");
+                return false;
+            }
+            
+            if(!loadedExecData || !loadedExecData.length) {
+                addDebug("⚠️ Missing EXEC.bin!");
+                return false;
+            }
+            
+            if(!loadedGromData || !loadedGromData.length) {
+                addDebug("⚠️ Missing GROM.bin - using default patterns");
+            }
+            
+            try {
+                stic = new STIC();
+                cpu = new CP1610(stic);
+                cpu.loadROM(loadedRomData.raw, 0x5000);
+                cpu.reset();
+                emulationRunning = true;
+                pauseRequested = false;
+                frameCount = 0;
+                
+                document.getElementById('rom-status').innerHTML = 
+                    `✅ All ROMs loaded! CPU running at $5000`;
+                document.getElementById('cpu-status').innerHTML = 'RUNNING';
+                addDebug("🚀 Emulation started successfully!");
+                return true;
+            } catch(err) {
+                addDebug(`❌ Init failed: ${err.message}`);
+                return false;
+            }
+        }
+        
+        function runEmulationFrame() {
+            if(!emulationRunning || !cpu || pauseRequested) return false;
+            const CYCLES_PER_FRAME = 14900;
+            
+            if(cpu && cpu.running && cpu.interruptEnabled) {
+                const decle = cpu.read16(cpu.pc);
+                const opcode = (decle >> 10) & 0x3F;
+                if(opcode === 0x00) {
+                    cpu.handleInterrupt();
+                }
+            }
+            
+            return cpu.run(CYCLES_PER_FRAME) > 0;
+        }
+        
+        function checkVideo() {
+            if(!cpu) return;
+            let nonZeroCount = 0;
+            for(let i = 0; i < 240; i++) {
+                if(cpu.read16(0x0200 + i*2) !== 0) nonZeroCount++;
+            }
+            if(nonZeroCount > 0) {
+                document.getElementById('video-status').innerHTML = `ACTIVE (${nonZeroCount} tiles)`;
+                document.getElementById('video-status').style.color = '#00ff00';
+            } else {
+                document.getElementById('video-status').innerHTML = '---';
+            }
+        }
+        
+        async function parseIntellivisionRom(arrayBuffer) {
+            const bytes = new Uint8Array(arrayBuffer);
+            let romData = null;
+            let format = "unknown";
+            
+            if(bytes.length > 2 && bytes[0] === 0x01 && bytes[1] === 0x00) {
+                romData = bytes.slice(0x34);
+                format = "int";
+            } else if(bytes.length >= 4096) {
+                romData = bytes;
+                format = "bin";
+            } else {
+                throw new Error("Unknown ROM format");
+            }
+            return { raw: romData, format: format, size: romData.length };
+        }
+        
+        document.getElementById('exec-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            execName = file.name;
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                loadedExecData = new Uint8Array(arrayBuffer);
+                addDebug(`✅ EXEC loaded: ${loadedExecData.length} bytes`);
+                checkAllROMsLoaded();
+            } catch(err) {
+                addDebug(`❌ EXEC failed: ${err.message}`);
+            }
+        });
+        
+        document.getElementById('grom-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            gromName = file.name;
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                loadedGromData = new Uint8Array(arrayBuffer);
+                addDebug(`✅ GROM loaded: ${loadedGromData.length} bytes`);
+                checkAllROMsLoaded();
+            } catch(err) {
+                addDebug(`❌ GROM failed: ${err.message}`);
+            }
+        });
+        
+        document.getElementById('rom-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            romName = file.name;
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                loadedRomData = await parseIntellivisionRom(arrayBuffer);
+                addDebug(`✅ ROM loaded: ${loadedRomData.raw.length} bytes`);
+                checkAllROMsLoaded();
+            } catch(err) {
+                addDebug(`❌ ROM failed: ${err.message}`);
+            }
+        });
+        
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            if(cpu) { cpu.reset(); emulationRunning = true; pauseRequested = false; addDebug("🔄 Reset"); }
+            else if(loadedRomData && loadedExecData) initializeEmulation();
+        });
+        
+        document.getElementById('pause-btn').addEventListener('click', () => {
+            pauseRequested = !pauseRequested;
+            emulationRunning = !pauseRequested;
+            document.getElementById('pause-btn').textContent = pauseRequested ? "▶️" : "⏸️";
+            addDebug(pauseRequested ? "⏸️ Paused" : "▶️ Resumed");
+        });
+        
+        function animate() {
+            try {
+                runEmulationFrame();
+                
+                if(stic) {
+                    stic.render();
+                    stic.drawToCanvas(ctx);
+                }
+                
+                frameCount++;
+                if(frameCount % 60 === 0) {
+                    checkVideo();
+                }
+                
+                if(cpu && cpu.running) {
+                    ctx.font = "9px monospace";
+                    ctx.fillStyle = "#ffd700";
+                    ctx.fillText(`PC: ${cpu.getDebugInfo().pc}`, 5, 15);
+                    ctx.fillText(`INST: ${cpu.instructionCount}`, 5, 27);
+                    document.getElementById('cpu-status').innerHTML = `RUN (${cpu.instructionCount})`;
+                }
+                
+                requestAnimationFrame(animate);
+            } catch(err) {
+                addDebug(`❌ Error: ${err.message}`);
+                requestAnimationFrame(animate);
+            }
+        }
+        
+        animate();
+        addDebug("🎮 Emulator ready - Load in order: EXEC → GROM → Game");
+        addDebug("📜 GROM.bin provides real Intellivision character graphics");
+        
+    })();
+</script>
+</body>
+</html>

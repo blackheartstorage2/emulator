@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files>
+  <file name="Intellivision.7z" source="original">
+    <mtime>1478386540</mtime>
+    <size>1748636</size>
+    <md5>f0547a83266bf3d3040931ceed13c235</md5>
+    <crc32>2fac92cd</crc32>
+    <sha1>61cce8553f0f1811f8f04d9a86f6a5b97232eba2</sha1>
+    <format>7z</format>
+    <filecount>149</filecount>
+  </file>
+  <file name="IntellivisionRomCollectionReuploadByDataghost_archive.torrent" source="metadata">
+    <btih>3fd3bdd0d83e0a979c197bab6c0b89787df56c40</btih>
+    <mtime>1738863020</mtime>
+    <size>2008</size>
+    <md5>f6cd24df3be61ba2226b47b9f1099a06</md5>
+    <crc32>ad3f8053</crc32>
+    <sha1>b3c48dc6543924c1ec4fe6fe2c8f032895f40238</sha1>
+    <format>Archive BitTorrent</format>
+  </file>
+  <file name="IntellivisionRomCollectionReuploadByDataghost_files.xml" source="original">
+    <format>Metadata</format>
+    <md5>5cd8f0469afdf3c77c6c0404d37dc596</md5>
+    <summation>md5</summation>
+  </file>
+  <file name="IntellivisionRomCollectionReuploadByDataghost_meta.sqlite" source="original">
+    <mtime>1478386554</mtime>
+    <size>9216</size>
+    <md5>80a883965b01981fd8139d1678b17586</md5>
+    <crc32>88ba3024</crc32>
+    <sha1>620a1becc7f83d270a662eb7d455e1ff9fea2229</sha1>
+    <format>Metadata</format>
+  </file>
+  <file name="IntellivisionRomCollectionReuploadByDataghost_meta.xml" source="original">
+    <mtime>1682213248</mtime>
+    <size>1237</size>
+    <format>Metadata</format>
+    <md5>c7da8c26cc269f87fb9d4f889aca0895</md5>
+    <crc32>de77ab30</crc32>
+    <sha1>9d66c159430f1677e4f12f680f6c1b1929ae468e</sha1>
+  </file>
+  <file name="IntellivisionRomCollectionReuploadByDataghost_reviews.xml" source="original">
+    <mtime>1731994194</mtime>
+    <size>1012</size>
+    <md5>ddd78e0cf8a2b27b338873a624ce6a06</md5>
+    <crc32>177e5b89</crc32>
+    <sha1>3efd63562b6f643d0f0a297d4c3716a474ca838e</sha1>
+    <format>Metadata</format>
+  </file>
+</files>

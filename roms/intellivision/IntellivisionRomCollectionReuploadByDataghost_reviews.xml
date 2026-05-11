@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<reviews itemIdentifier="IntellivisionRomCollectionReuploadByDataghost">
+  <review>
+    <reviewtitle>Doesn't work. Totally broken.</reviewtitle>
+    <reviewbody>Zips don't unzip. I tried 3 different decompression apps. The zip files themselves don't import into emulator.  </reviewbody>
+    <stars>1</stars>
+    <reviewer>UserAccount03419768812</reviewer>
+    <reviewdate>2023-09-05 19:39:57</reviewdate>
+    <createdate>2023-09-05 19:39:57</createdate>
+    <reviewer_itemname>@useraccount03419768812</reviewer_itemname>
+  </review>
+  <review>
+    <reviewtitle>Thank you. 100%</reviewtitle>
+    <reviewbody>Use 7.zip or similar to decompress.</reviewbody>
+    <stars>4</stars>
+    <reviewer>tronbrvix</reviewer>
+    <reviewdate>2023-09-30 21:00:55</reviewdate>
+    <createdate>2023-09-30 21:00:55</createdate>
+    <reviewer_itemname>@tronbrvix</reviewer_itemname>
+  </review>
+  <info>
+    <num_reviews>2</num_reviews>
+    <avg_rating>2.50</avg_rating>
+  </info>
+</reviews>
